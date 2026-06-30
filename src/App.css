@@ -23,9 +23,11 @@ body {
   display: flex;
   justify-content: center;
   min-height: 100vh;
+  width: 100%;
 }
+#root { width: 100%; display: flex; justify-content: center; }
 
-.phone { display: flex; justify-content: center; min-height: 100vh; }
+.phone { width: 100%; display: flex; justify-content: center; }
 .phone-screen {
   position: relative;
   width: 100%;
