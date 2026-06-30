@@ -71,6 +71,9 @@ function fmtDMY(d) {
   if (!d) return ''
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
 }
+function isThisMonth(d, now) {
+  return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+}
 
 // --- Поле даты на react-day-picker ---
 function DateField({ value, onChange, className = '', invalid = false }) {
@@ -78,7 +81,6 @@ function DateField({ value, onChange, className = '', invalid = false }) {
   const wrapRef = useRef(null)
   const selected = parseYMD(value)
 
-  // Закрытие по клику вне поля
   useEffect(() => {
     if (!open) return
     const onDocClick = (e) => {
@@ -127,6 +129,24 @@ function Avatar({ student, size = 40 }) {
   return (
     <div className={`avatar avatar-${COLORS[idx % COLORS.length]}`}
       style={{ width: size, height: size }}>{initialsOf(student.name)}</div>
+  )
+}
+
+// --- Окно подтверждения (для удаления) ---
+function ConfirmDialog({ title, message, confirmLabel = 'Удалить', onConfirm, onCancel }) {
+  return (
+    <div className="overlay center confirm-over" onClick={(e) => { e.stopPropagation(); onCancel() }}>
+      <div className="dialog confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-body">
+          <p className="confirm-title">{title}</p>
+          {message && <p className="confirm-msg">{message}</p>}
+          <div className="confirm-actions">
+            <button className="ghost-btn" onClick={onCancel}>Отмена</button>
+            <button className="danger-btn" onClick={onConfirm}>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -180,7 +200,7 @@ function studentUpcoming(student, fromDate, horizonDays, handled) {
 function nextPaymentInstance(student, fromDate, handled) {
   if (student.rate <= 0) return null
   const list = studentUpcoming(student, fromDate, 366, handled).filter((x) => !x.status)
-  const paid = Math.floor(student.balance / student.rate)
+  const paid = Math.max(0, Math.floor(student.balance / student.rate))
   return list[paid] || null
 }
 
@@ -235,21 +255,23 @@ function TodayScreen({ students, handled, onDone, onCancel }) {
 }
 
 // --- Экран Mentees ---
-function MenteesScreen({ students, handled, onEdit, onTopUp }) {
+function MenteesScreen({ students, handled, topups, onEdit, onTopUp }) {
   const now = new Date()
   let monthlyTotal = 0
 
   const cards = students.map((s) => {
     const nextInst = nextPaymentInstance(s, now, handled)
     const nextDate = nextInst ? nextInst.date : null
-    const inThisMonth = nextDate &&
-      nextDate.getMonth() === now.getMonth() &&
-      nextDate.getFullYear() === now.getFullYear()
-    if (inThisMonth) monthlyTotal += s.subscription
-    const paidLessons = s.rate > 0 ? Math.floor(s.balance / s.rate) : 0
+    if (isThisMonth(nextDate, now)) monthlyTotal += s.subscription
+    const paidLessons = s.rate > 0 ? Math.max(0, Math.floor(s.balance / s.rate)) : 0
     const lowBalance = s.rate > 0 && nextInst && paidLessons <= 1
     return { s, nextDate, lowBalance }
   })
+
+  // Сумма пополнений, сделанных в этом месяце
+  const addedThisMonth = (topups || []).reduce((sum, t) => {
+    return isThisMonth(parseYMD(t.date), now) ? sum + t.amount : sum
+  }, 0)
 
   return (
     <div className="screen list-screen">
@@ -293,15 +315,21 @@ function MenteesScreen({ students, handled, onEdit, onTopUp }) {
       </div>
 
       <div className="mentees-footer">
-        <span className="footer-label">Возможный заработок в этом месяце</span>
-        <span className="footer-value">{fmtMoney(monthlyTotal)} ₽</span>
+        <div className="footer-row">
+          <span className="footer-label">Возможный заработок</span>
+          <span className="footer-value">{fmtMoney(monthlyTotal)} ₽</span>
+        </div>
+        <div className="footer-row">
+          <span className="footer-label">Пополнено в этом месяце</span>
+          <span className="footer-value received">{fmtMoney(addedThisMonth)} ₽</span>
+        </div>
       </div>
     </div>
   )
 }
 
 // --- Окно редактирования ученика ---
-function EditModal({ student, handled, onSave, onClose }) {
+function EditModal({ student, handled, onSave, onDelete, onClose }) {
   const [name, setName] = useState(student.name)
   const [photo, setPhoto] = useState(student.photo || null)
   const [rate, setRate] = useState(String(student.rate))
@@ -310,13 +338,14 @@ function EditModal({ student, handled, onSave, onClose }) {
   const [moved, setMoved] = useState(student.moved || {})
   const [extra, setExtra] = useState(student.extra || [])
   const [showAllUnpaid, setShowAllUnpaid] = useState(false)
+  const [confirm, setConfirm] = useState(null) // null | {type:'student'} | {type:'lesson', inst}
   const fileRef = useRef(null)
 
   const now = new Date()
   const rateNum = Number(rate) || 0
   const working = { ...student, rate: rateNum, removed, moved, extra }
   const allInstances = studentUpcoming(working, now, 366, handled).filter((x) => !x.status)
-  const paidLessons = rateNum > 0 ? Math.floor(student.balance / rateNum) : 0
+const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateNum)) : 0
   const paidList = allInstances.slice(0, paidLessons)
 
   const monthAhead = new Date(now); monthAhead.setDate(monthAhead.getDate() + 31)
@@ -324,9 +353,7 @@ function EditModal({ student, handled, onSave, onClose }) {
   const unpaidVisible = showAllUnpaid ? unpaidAll : unpaidAll.slice(0, 4)
 
   const nextInst = allInstances[paidLessons] || null
-  const nextInThisMonth = nextInst &&
-    nextInst.date.getMonth() === now.getMonth() &&
-    nextInst.date.getFullYear() === now.getFullYear()
+  const nextInThisMonth = nextInst && isThisMonth(nextInst.date, now)
 
   const pickPhoto = (e) => {
     const file = e.target.files && e.target.files[0]
@@ -361,7 +388,7 @@ function EditModal({ student, handled, onSave, onClose }) {
       <input className="field small le-time" type="text" inputMode="numeric"
         maxLength={5} value={inst.time} onChange={(e) => editTime(inst, maskTime(e.target.value))} />
       {inst.source === 'extra' && <span className="extra-badge">вне</span>}
-      <button className="round-btn le-del" onClick={() => removeLesson(inst)}><Trash2 size={15} /></button>
+      <button className="round-btn le-del" onClick={() => setConfirm({ type: 'lesson', inst })}><Trash2 size={15} /></button>
     </div>
   )
 
@@ -435,9 +462,27 @@ function EditModal({ student, handled, onSave, onClose }) {
               ? (nextInThisMonth ? 'Попадает в этот месяц — войдёт в заработок месяца.' : 'В следующем месяце — в заработок этого месяца не войдёт.')
               : 'Нет ближайших уроков для расчёта.'}
           </p>
+
+          <button className="delete-student-btn" onClick={() => setConfirm({ type: 'student' })}>
+            <Trash2 size={16} /> Удалить ученика
+          </button>
         </div>
         <button className="primary-btn" onClick={save}>Сохранить</button>
       </div>
+
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.type === 'student' ? 'Удалить ученика?' : 'Удалить урок?'}
+          message={confirm.type === 'student'
+            ? `${student.name} и все его данные будут удалены без возможности восстановления.`
+            : `Урок ${fmtDMY(confirm.inst.date)} в ${confirm.inst.time} будет удалён.`}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            if (confirm.type === 'student') onDelete(student.id)
+            else { removeLesson(confirm.inst); setConfirm(null) }
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -628,6 +673,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('today')
   const [students, setStudents] = usePersistentState('tc_students', [])
   const [handled, setHandled] = usePersistentState('tc_handled', {})
+  const [topups, setTopups] = usePersistentState('tc_topups', [])
   const [editingId, setEditingId] = useState(null)
   const [toppingId, setToppingId] = useState(null)
 
@@ -646,8 +692,15 @@ function App() {
     setStudents(students.map((s) => (s.id === updated.id ? updated : s)))
     setEditingId(null)
   }
+  const deleteStudent = (id) => {
+    setStudents(students.filter((s) => s.id !== id))
+    setEditingId(null)
+  }
   const topUp = (amount) => {
-    setStudents(students.map((s) => (s.id === toppingId ? { ...s, balance: s.balance + amount } : s)))
+    if (amount > 0) {
+      setStudents(students.map((s) => (s.id === toppingId ? { ...s, balance: s.balance + amount } : s)))
+      setTopups([...topups, { id: Date.now(), studentId: toppingId, amount, date: dateInputValue(new Date()) }])
+    }
     setToppingId(null)
   }
 
@@ -658,7 +711,7 @@ function App() {
     <div className="phone">
       <div className="phone-screen">
         {activeTab === 'mentees' && (
-          <MenteesScreen students={students} handled={handled}
+          <MenteesScreen students={students} handled={handled} topups={topups}
             onEdit={(s) => setEditingId(s.id)} onTopUp={(s) => setToppingId(s.id)} />
         )}
         {activeTab === 'today' && (
@@ -667,7 +720,8 @@ function App() {
         {activeTab === 'add' && <AddScreen onAdd={addStudent} />}
         <TabBar active={activeTab} onChange={setActiveTab} />
 
-        {editingStudent && <EditModal student={editingStudent} handled={handled} onSave={saveStudent} onClose={() => setEditingId(null)} />}
+        {editingStudent && <EditModal student={editingStudent} handled={handled}
+          onSave={saveStudent} onDelete={deleteStudent} onClose={() => setEditingId(null)} />}
         {toppingStudent && <TopUpModal student={toppingStudent} onConfirm={topUp} onClose={() => setToppingId(null)} />}
       </div>
     </div>
