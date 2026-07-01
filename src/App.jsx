@@ -334,18 +334,24 @@ function EditModal({ student, handled, onSave, onDelete, onClose }) {
   const [photo, setPhoto] = useState(student.photo || null)
   const [rate, setRate] = useState(String(student.rate))
   const [subscription, setSubscription] = useState(String(student.subscription))
+  const [schedule, setSchedule] = useState(student.schedule || [])
   const [removed, setRemoved] = useState(student.removed || [])
   const [moved, setMoved] = useState(student.moved || {})
   const [extra, setExtra] = useState(student.extra || [])
   const [showAllUnpaid, setShowAllUnpaid] = useState(false)
-  const [confirm, setConfirm] = useState(null) // null | {type:'student'} | {type:'lesson', inst}
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [newPerWeek, setNewPerWeek] = useState(2)
+  const [newSchedule, setNewSchedule] = useState([{ day: '', time: '' }, { day: '', time: '' }])
+  const [newTouched, setNewTouched] = useState(false)
+  const [confirm, setConfirm] = useState(null) // null | {type:'student'} | {type:'lesson', inst} | {type:'newschedule'}
   const fileRef = useRef(null)
 
   const now = new Date()
   const rateNum = Number(rate) || 0
-  const working = { ...student, rate: rateNum, removed, moved, extra }
+  const working = { ...student, schedule, rate: rateNum, removed, moved, extra }
   const allInstances = studentUpcoming(working, now, 366, handled).filter((x) => !x.status)
-const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateNum)) : 0
+  const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateNum)) : 0
   const paidList = allInstances.slice(0, paidLessons)
 
   const monthAhead = new Date(now); monthAhead.setDate(monthAhead.getDate() + 31)
@@ -382,6 +388,42 @@ const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateN
     setExtra([...extra, { id: Date.now(), date: dateInputValue(now), time: '12:00' }])
   }
 
+  // --- новое регулярное расписание ---
+  const decreaseNew = () => {
+    if (newPerWeek <= 1) return
+    setNewPerWeek(newPerWeek - 1)
+    setNewSchedule(newSchedule.slice(0, -1))
+  }
+  const increaseNew = () => {
+    if (newPerWeek >= 7) return
+    setNewPerWeek(newPerWeek + 1)
+    setNewSchedule([...newSchedule, { day: '', time: '' }])
+  }
+  const updateNewRow = (i, key, value) => {
+    setNewSchedule(newSchedule.map((row, idx) => (idx === i ? { ...row, [key]: value } : row)))
+  }
+  const startRebuild = () => {
+    setNewPerWeek(2)
+    setNewSchedule([{ day: '', time: '' }, { day: '', time: '' }])
+    setNewTouched(false)
+    setRebuilding(true)
+  }
+  const cancelRebuild = () => {
+    setRebuilding(false)
+    setNewTouched(false)
+  }
+  const applyNewSchedule = () => {
+    const ok = newSchedule.every((r) => r.day && /^\d{2}:\d{2}$/.test(r.time))
+    if (!ok) { setNewTouched(true); return }
+    setSchedule(newSchedule.filter((r) => r.day))
+    setRemoved([])   // старые исключения ссылаются на прежнее расписание
+    setMoved({})     // без очистки moved-уроки остались бы «призраками»
+    setRebuilding(false)
+    setNewTouched(false)
+    setShowAllUnpaid(false)
+  }
+  const newErr = (cond) => newTouched && cond ? ' field-error' : ''
+
   const renderRow = (inst, dim) => (
     <div className={`lesson-edit-row ${dim ? 'dimmed' : ''}`} key={inst.key}>
       <DateField className="le-date" value={dateInputValue(inst.date)} onChange={(v) => editDate(inst, v)} />
@@ -394,7 +436,7 @@ const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateN
 
   const save = () => {
     if (!name.trim() || !rate) return
-    onSave({ ...student, name: name.trim(), photo, rate: rateNum, subscription: Number(subscription) || 0, removed, moved, extra })
+    onSave({ ...student, name: name.trim(), photo, rate: rateNum, subscription: Number(subscription) || 0, schedule, removed, moved, extra })
   }
 
   return (
@@ -427,41 +469,87 @@ const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateN
             <span className="suffix">₽</span>
           </div>
 
-          <button className="add-extra-btn" onClick={addExtra}>
-            <Plus size={15} /> Добавить урок вне расписания
+          <button className="schedule-toggle" onClick={() => setScheduleOpen(!scheduleOpen)}>
+            <span className="schedule-toggle-title">Расписание</span>
+            <span className={`chev-circle ${scheduleOpen ? 'open' : ''}`}><ChevronDown size={16} /></span>
           </button>
 
-          <p className="field-label accent">Оплаченные уроки</p>
-          {paidList.length === 0 ? (
-            <p className="hint">Нет оплаченных уроков вперёд (баланс {fmtMoney(student.balance)} ₽).</p>
-          ) : (
-            paidList.map((inst) => renderRow(inst, false))
-          )}
+          {scheduleOpen && (
+            <div className="schedule-body">
+              {rebuilding ? (
+                <>
+                  <label className="field-label">Уроков в неделю</label>
+                  <div className="stepper">
+                    <button className="step-btn" onClick={decreaseNew}><Minus size={14} /></button>
+                    <span className="step-value">{newPerWeek}</span>
+                    <button className="step-btn" onClick={increaseNew}><Plus size={14} /></button>
+                  </div>
 
-          <p className="field-label section-muted">Неоплаченные · месяц вперёд</p>
-          {unpaidAll.length === 0 ? (
-            <p className="hint">Нет неоплаченных уроков в ближайший месяц.</p>
-          ) : (
-            <>
-              {unpaidVisible.map((inst) => renderRow(inst, true))}
-              {unpaidAll.length > 4 && (
-                <button className="show-more-btn" onClick={() => setShowAllUnpaid(!showAllUnpaid)}>
-                  {showAllUnpaid ? 'Свернуть' : `Показать ещё ${unpaidAll.length - 4}`}
-                  <ChevronDown size={15} className={showAllUnpaid ? 'chev-up' : ''} />
-                </button>
+                  <p className="field-label accent">Новое расписание</p>
+                  {newSchedule.map((row, i) => (
+                    <div className="schedule-row" key={i}>
+                      <select className={`field small${newErr(!row.day)}`} value={row.day}
+                        onChange={(e) => updateNewRow(i, 'day', e.target.value)}>
+                        <option value="" disabled>День</option>
+                        {WEEKDAYS.slice(1).concat(WEEKDAYS[0]).map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                      <input className={`field small${newErr(!/^\d{2}:\d{2}$/.test(row.time))}`} type="text"
+                        inputMode="numeric" placeholder="13:00" maxLength={5} value={row.time}
+                        onChange={(e) => updateNewRow(i, 'time', maskTime(e.target.value))} />
+                    </div>
+                  ))}
+                  {newTouched && !newSchedule.every((r) => r.day && /^\d{2}:\d{2}$/.test(r.time)) &&
+                    <p className="form-error">Заполни день и время в каждой строке.</p>}
+
+                  <div className="mentee-actions" style={{ marginTop: 12 }}>
+                    <button className="ghost-btn" onClick={cancelRebuild}>Отмена</button>
+                    <button className="ghost-btn" onClick={applyNewSchedule}>Применить расписание</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button className="add-extra-btn" onClick={addExtra}>
+                    <Plus size={15} /> Добавить урок вне расписания
+                  </button>
+                  <button className="new-schedule-btn" onClick={() => setConfirm({ type: 'newschedule' })}>
+                    <Calendar size={15} /> Создать новое регулярное расписание
+                  </button>
+
+                  <p className="field-label accent">Оплаченные уроки</p>
+                  {paidList.length === 0 ? (
+                    <p className="hint">Нет оплаченных уроков вперёд (баланс {fmtMoney(student.balance)} ₽).</p>
+                  ) : (
+                    paidList.map((inst) => renderRow(inst, false))
+                  )}
+
+                  {unpaidAll.length > 0 && (
+                    <>
+                      <p className="field-label section-muted">Неоплаченные · месяц вперёд</p>
+                      {unpaidVisible.map((inst) => renderRow(inst, true))}
+                      {unpaidAll.length > 4 && (
+                        <button className="show-more-btn" onClick={() => setShowAllUnpaid(!showAllUnpaid)}>
+                          {showAllUnpaid ? 'Свернуть' : `Показать ещё ${unpaidAll.length - 4}`}
+                          <ChevronDown size={15} className={showAllUnpaid ? 'chev-up' : ''} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </>
               )}
-            </>
+            </div>
           )}
 
           <div className="edit-preview">
             <span className="pay-label">Следующая оплата</span>
             <span className="pay-date">{nextInst ? fmtDate(nextInst.date) : '—'}</span>
           </div>
-          <p className="hint">
-            {nextInst
-              ? (nextInThisMonth ? 'Попадает в этот месяц — войдёт в заработок месяца.' : 'В следующем месяце — в заработок этого месяца не войдёт.')
-              : 'Нет ближайших уроков для расчёта.'}
-          </p>
+          {nextInst ? (
+            nextInThisMonth && <p className="hint">Попадает в этот месяц — войдёт в заработок месяца.</p>
+          ) : (
+            <p className="hint">Нет ближайших уроков для расчёта.</p>
+          )}
 
           <button className="delete-student-btn" onClick={() => setConfirm({ type: 'student' })}>
             <Trash2 size={16} /> Удалить ученика
@@ -472,13 +560,23 @@ const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateN
 
       {confirm && (
         <ConfirmDialog
-          title={confirm.type === 'student' ? 'Удалить ученика?' : 'Удалить урок?'}
-          message={confirm.type === 'student'
-            ? `${student.name} и все его данные будут удалены без возможности восстановления.`
-            : `Урок ${fmtDMY(confirm.inst.date)} в ${confirm.inst.time} будет удалён.`}
+          title={
+            confirm.type === 'student' ? 'Удалить ученика?'
+            : confirm.type === 'newschedule' ? 'Создать новое расписание?'
+            : 'Удалить урок?'
+          }
+          message={
+            confirm.type === 'student'
+              ? `${student.name} и все его данные будут удалены без возможности восстановления.`
+              : confirm.type === 'newschedule'
+                ? 'Текущее регулярное расписание будет заменено новым. Отдельные переносы и удаления уроков сбросятся. Баланс и пополнения не меняются.'
+                : `Урок ${fmtDMY(confirm.inst.date)} в ${confirm.inst.time} будет удалён.`
+          }
+          confirmLabel={confirm.type === 'newschedule' ? 'Продолжить' : 'Удалить'}
           onCancel={() => setConfirm(null)}
           onConfirm={() => {
             if (confirm.type === 'student') onDelete(student.id)
+            else if (confirm.type === 'newschedule') { startRebuild(); setConfirm(null) }
             else { removeLesson(confirm.inst); setConfirm(null) }
           }}
         />
@@ -486,6 +584,7 @@ const paidLessons = rateNum > 0 ? Math.max(0, Math.floor(student.balance / rateN
     </div>
   )
 }
+
 
 // --- Окно пополнения баланса ---
 function TopUpModal({ student, onConfirm, onClose }) {
@@ -549,7 +648,7 @@ function AddScreen({ onAdd }) {
   }
 
   const scheduleOk = schedule.every((r) => r.day && /^\d{2}:\d{2}$/.test(r.time))
-  const valid = name.trim() && photo && rate && balance && subscription && startDate && scheduleOk
+const valid = name.trim() && rate && balance && subscription && startDate && scheduleOk
 
   const submit = () => {
     if (!valid) { setTouched(true); return }
@@ -578,10 +677,13 @@ function AddScreen({ onAdd }) {
           <span className="add-title">Новый ученик</span>
         </header>
 
-        <button className={`avatar-upload${touched && !photo ? ' avatar-error' : ''}`}
-          onClick={() => fileRef.current && fileRef.current.click()}>
-          {photo ? <img src={photo} alt="" className="avatar-preview" /> : <Camera size={22} />}
-        </button>
+        <button className="avatar-upload" onClick={() => fileRef.current && fileRef.current.click()}>
+          {photo ? (<img src={photo} alt="" className="avatar-preview" />) : (<span className="avatar-placeholder">
+          <Camera size={24} />
+          <span className="avatar-plus"><Plus size={11} /></span>
+    </span>
+  )}
+</button>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} />
 
         <label className="field-label">Имя</label>

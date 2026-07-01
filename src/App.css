@@ -274,3 +274,45 @@ input.field.small::placeholder { color: var(--text-muted); }
 .lesson-edit-row .le-time { height: 36px; margin-bottom: 0; font-size: 13px; }
 .lesson-edit-row .le-date { flex: 1.5 1 0; }
 .lesson-edit-row .le-time { flex: 1 1 0; }
+
+/* Сворачиваемое расписание в редактировании */
+.schedule-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; border: none; background: none; cursor: pointer;
+  padding: 14px 0 10px; margin-top: 14px;
+  border-top: 1px solid var(--border);
+  font-family: inherit; color: var(--text);
+}
+.schedule-toggle-title { font-size: 16px; font-weight: 600; }
+.chev-circle {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(120, 113, 108, 0.15);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.chev-circle.open { transform: rotate(180deg); }
+.schedule-body { padding-top: 2px; }
+.new-schedule-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; height: 40px; margin: 0 0 16px;
+  border: 1px solid var(--warn-border); border-radius: 8px;
+  background: var(--warn-bg); color: #b45309; font-size: 13px;
+  cursor: pointer; font-family: inherit;
+}
+.new-schedule-btn:active { transform: scale(0.99); }
+
+.avatar-placeholder {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+}
+.avatar-plus {
+  position: absolute; right: 6px; bottom: 6px;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+}
