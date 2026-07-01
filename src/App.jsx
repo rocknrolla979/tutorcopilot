@@ -217,8 +217,8 @@ function TodayScreen({ students, handled, onDone, onCancel }) {
   const total = all.filter((l) => l.status !== 'cancelled').reduce((sum, l) => sum + l.rate, 0)
 
   return (
-    <div className="screen">
-      <header className="today-header">
+    <div className="screen list-screen">
+      <header className="today-header screen-head">
         <div>
           <h1 className="today-title">Сегодня</h1>
           <p className="today-date">{dateStr}</p>
@@ -229,27 +229,29 @@ function TodayScreen({ students, handled, onDone, onCancel }) {
         </div>
       </header>
 
-      {visible.length === 0 ? (
-        <p className="empty">На сегодня уроков нет.</p>
-      ) : (
-        <div className="cards">
-          {visible.map((l) => (
-            <div className="lesson-card" key={l.key}>
-              <Avatar student={l.student} />
-              <div className="lesson-info">
-                <p className="lesson-name">{l.student.name}</p>
-                <p className="lesson-meta">{l.time} · {fmtMoney(l.rate)} ₽</p>
+      <div className="list-scroll">
+        {visible.length === 0 ? (
+          <p className="empty">На сегодня уроков нет.</p>
+        ) : (
+          <div className="cards">
+            {visible.map((l) => (
+              <div className="lesson-card" key={l.key}>
+                <Avatar student={l.student} />
+                <div className="lesson-info">
+                  <p className="lesson-name">{l.student.name}</p>
+                  <p className="lesson-meta">{l.time} · {fmtMoney(l.rate)} ₽</p>
+                </div>
+                <button className="round-btn btn-check" onClick={() => onDone(l.studentId, l.key, l.rate)}>
+                  <Check size={16} />
+                </button>
+                <button className="round-btn btn-x" onClick={() => onCancel(l.studentId, l.key)}>
+                  <X size={16} />
+                </button>
               </div>
-              <button className="round-btn btn-check" onClick={() => onDone(l.studentId, l.key, l.rate)}>
-                <Check size={16} />
-              </button>
-              <button className="round-btn btn-x" onClick={() => onCancel(l.studentId, l.key)}>
-                <X size={16} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -275,14 +277,14 @@ function MenteesScreen({ students, handled, topups, onEdit, onTopUp }) {
 
   return (
     <div className="screen list-screen">
-      <div className="list-scroll">
-        <header className="today-header">
-          <div>
-            <h1 className="today-title">Ученики</h1>
-            <p className="today-date">{students.length} в работе</p>
-          </div>
-        </header>
+      <header className="today-header screen-head">
+        <div>
+          <h1 className="today-title">Ученики</h1>
+          <p className="today-date">{students.length} в работе</p>
+        </div>
+      </header>
 
+      <div className="list-scroll">
         {students.length === 0 ? (
           <p className="empty">Пока нет учеников.<br />Добавь во вкладке Add.</p>
         ) : (
