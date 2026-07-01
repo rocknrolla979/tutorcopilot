@@ -164,7 +164,9 @@ body {
 /* Строки уроков в окне редактирования */
 .lesson-edit-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: nowrap; }
 .le-del { color: var(--text-muted); }
-.lesson-edit-row.dimmed { opacity: 0.5; }
+.lesson-edit-row.dimmed .field { background: var(--surface); color: var(--text-muted); }
+.lesson-edit-row.dimmed .field input { color: var(--text-muted); }
+.lesson-edit-row.dimmed .datefield-btn span { color: var(--text-muted); }
 .extra-badge {
   font-size: 10px; color: var(--accent); background: #eef2ff;
   border: 1px solid #c7d2fe; border-radius: 6px; padding: 2px 6px; white-space: nowrap; flex-shrink: 0;
